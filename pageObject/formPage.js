@@ -27,11 +27,11 @@ export class PracticeForm {
 
   async fillForm() {
     await this.page.waitForTimeout(1000);
-    await this.locators.firstNameInput.fill('Sumit');
+    await this.locators.firstNameInput.fill('Ravi');
     await this.page.waitForTimeout(1000);
-    await this.locators.lastNameInput.fill('Mishra');
+    await this.locators.lastNameInput.fill('Tiwari');
     await this.page.waitForTimeout(1000);
-    await this.locators.emailInput.fill('sumit@example.com');
+    await this.locators.emailInput.fill('ravi.tiwari@example.com');
 
     await this.page.waitForTimeout(1000);
     await this.page.evaluate(() => {
@@ -94,8 +94,8 @@ export class PracticeForm {
 
     await expect(this.locators.modalTitle).toBeVisible({ timeout: 10000 });
 
-    await expect(this.locators.resultTable).toContainText('Sumit Mishra');
-    await expect(this.locators.resultTable).toContainText('sumit@example.com');
+    await expect(this.locators.resultTable).toContainText('Ravi Tiwari');
+    await expect(this.locators.resultTable).toContainText('ravi.tiwari@example.com');
     await expect(this.locators.resultTable).toContainText('Male');
     await expect(this.locators.resultTable).toContainText('9876543210');
     await expect(this.locators.resultTable).toContainText('10 July,1995');

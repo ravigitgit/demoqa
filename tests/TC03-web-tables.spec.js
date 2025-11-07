@@ -7,9 +7,9 @@ test('Web Tables - Add, Edit, and Delete User', async ({ page }) => {
   await webTables.navigateToWebTables();
 
   await webTables.addUser({
-    firstName: 'Sumit',
-    lastName: 'Mishra',
-    email: 'sumit@example.com',
+    firstName: 'Ravi',
+    lastName: 'Tiwari',
+    email: 'ravi.tiwari@example.com',
     age: '30',
     salary: '50000',
     department: 'QA'
@@ -17,5 +17,5 @@ test('Web Tables - Add, Edit, and Delete User', async ({ page }) => {
 
   await webTables.editLastUserAge('35');
 
-  await webTables.deleteLastUser('Sumit');
+  await webTables.deleteLastUser('Ravi');
 });

@@ -1,5 +1,7 @@
 import { test } from '@playwright/test';
 import { Login } from '../pageObject/login';
+import dotenv from 'dotenv';
+dotenv.config(); 
 
 test.setTimeout(60000);
 
@@ -14,8 +16,9 @@ test.describe('Login Tests', () => {
   });
 
   test('login to DemoQA with valid credentials', async () => {
-    await login.login('SumitMishra', 'Pass@123');
-    await login.assertSuccessfulLogin('SumitMishra');
+
+    await login.login(process.env.DEMOQA_USERNAME, process.env.DEMOQA_PASSWORD);
+    await login.assertSuccessfulLogin(process.env.DEMOQA_USERNAME);
   });
 
   test('login to DemoQA with invalid credentials shows error', async () => {
