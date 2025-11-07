@@ -28,5 +28,6 @@
 6. **View PlayWright Report (GitHub Pages Hosted)**
 PlayWright test reports are automatically generated and deployed via GitHub Actions.
 
-📎 Live Report URL:
-👉 https://ravigitgit.github.io/demoqa/
+
+
+![GitHub release](https://img.shields.io/github/v/release/ravigitgit/demoqa)
