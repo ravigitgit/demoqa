@@ -1,79 +1,96 @@
-name: Playwright Tests
+name: Playwright CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: '30 3 * * *' # 9:00 AM IST (cron runs in UTC)
+    # Every day at 09:00 IST (03:30 UTC)
+    - cron: "30 3 * * *"
 
 permissions:
-  contents: write  # <-- gh-pages push
+  contents: read
+  packages: write    # needed to push to GHCR
+  id-token: write    # optional; useful if you later add OIDC to cloud
+
+env:
+  NODE_VERSION: "20"
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-tests   # ghcr.io/<owner>/<repo>-tests
+
+concurrency:
+  group: playwright-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: ⬇️ Checkout repository
+      - name: ⬇️ Checkout
         uses: actions/checkout@v4
 
-      - name: 🟢 Set up Node.js
+      - name: 🟢 Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'npm'
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
-      - name: 📦 Install dependencies
+      - name: 📦 Install deps
         run: npm ci
 
-      - name: 🎭 Install Playwright Browsers
+      - name: 🎭 Install Playwright browsers
         run: npx playwright install --with-deps
 
-      # passing env directly to the test runner...
-      - name: 🚀 Run Playwright Tests
-        env:
-          DEMOQA_BASE_URL: ${{ secrets.DEMOQA_BASE_URL }}
-          DEMOQA_USERNAME: ${{ secrets.DEMOQA_USERNAME }}
-          DEMOQA_PASSWORD: ${{ secrets.DEMOQA_PASSWORD }}
-        run: npx playwright test --reporter=html
-        continue-on-error: true   # keep going to upload report
+      - name: 🧪 Run Playwright tests (HTML + line)
+        run: npx playwright test --reporter=html,line
 
-      - name: 📤 Upload Playwright HTML Report
+      - name: 📤 Upload HTML report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: playwright-report
-          if-no-files-found: warn
+          retention-days: 7
 
-      # keep traces/videos for debugging
-      - name: 📤 Upload test-results (traces/videos)
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: test-results
-          if-no-files-found: ignore
-
-  deploy:
-    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
-    needs: test
+  build_and_push_image:
+    name: Build & Push GHCR Test Image
     runs-on: ubuntu-latest
+    needs: test
 
     steps:
-      - name: ⬇️ Checkout repo
+      - name: ⬇️ Checkout
         uses: actions/checkout@v4
 
-      - name: 📥 Download Playwright Report Artifact
-        uses: actions/download-artifact@v4
+      - name: 🟢 Setup Node (build context may need deps copy)
+        uses: actions/setup-node@v4
         with:
-          name: playwright-report
-          path: playwright-report
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
 
-      - name: 🚀 Deploy Playwright HTML Report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./playwright-report
-          publish_branch: gh-pages
-          force_orphan: true
+      - name: 📦 Install deps (for COPY in image layer)
+        run: npm ci
+
+      - name: 🔐 Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      - name: 🏷️ Prepare tags
+        id: meta
+        run: |
+          SHA_SHORT="${GITHUB_SHA::7}"
+          echo "latest=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+          echo "sha=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHA_SHORT}" >> $GITHUB_OUTPUT
+
+      - name: 🛠️ Build image
+        run: |
+          docker build \
+            --build-arg NODE_VERSION=${{ env.NODE_VERSION }} \
+            -t ${{ steps.meta.outputs.latest }} \
+            -t ${{ steps.meta.outputs.sha }} \
+            .
+
+      - name: ⬆️ Push image
+        run: |
+          docker push ${{ steps.meta.outputs.latest }}
+          docker push ${{ steps.meta.outputs.sha }}
