@@ -2,8 +2,8 @@
 
 1. **Clone the repo**
    ```bash
-   git clone https://github.com/ravigitgit/playwright-demoqa-tests.git
-   cd playwright-demoqa-tests
+   git clone https://github.com/ravigitgit/demoqa.git
+   cd demoqa
 
 2. **Install project dependencies**
     ```bash
