@@ -9,14 +9,19 @@ on:
     - cron: '30 3 * * *' # 9:00 AM IST (03:30 UTC)
 
 permissions:
-  contents: write     # for gh-pages push
-  pull-requests: write # for PR comment
+  contents: write         # gh-pages push
+  pull-requests: write    # PR comment
+  packages: write         # 🔑 needed for GHCR push
+
+env:
+  NODE_VERSION: 20
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ravigitgit/demoqa-tests  # final: ghcr.io/ravigitgit/demoqa-tests
 
 jobs:
   test:
     name: Test on ${{ matrix.browser }}
     runs-on: ubuntu-latest
-
     strategy:
       fail-fast: false
       matrix:
@@ -29,7 +34,7 @@ jobs:
       - name: 🟢 Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
       - name: 📦 Install dependencies
@@ -46,7 +51,6 @@ jobs:
           DEMOQA_PASSWORD: ${{ secrets.DEMOQA_PASSWORD }}
         run: npx playwright test --project=${{ matrix.browser }} --reporter=html,line
 
-      # Upload report per browser
       - name: 📤 Upload HTML Report (${{ matrix.browser }})
         if: always()
         uses: actions/upload-artifact@v4
@@ -54,7 +58,6 @@ jobs:
           name: playwright-report-${{ matrix.browser }}
           path: playwright-report
 
-      # Upload traces/videos per browser
       - name: 📤 Upload traces (${{ matrix.browser }})
         if: always()
         uses: actions/upload-artifact@v4
@@ -67,7 +70,6 @@ jobs:
     if: github.event_name == 'pull_request'
     needs: test
     runs-on: ubuntu-latest
-
     steps:
       - name: 💬 Upsert sticky PR comment
         uses: actions/github-script@v7
@@ -81,7 +83,7 @@ jobs:
             ✅ Browsers: **Chromium | Firefox | WebKit**
 
             📄 Reports are available in workflow artifacts  
-            🔗 [View CI Run & Download Reports](${runUrl})  
+            🔗 [View CI Run & Download Reports](${runUrl})
 
             _This comment auto-updates on new runs_`;
 
@@ -93,7 +95,6 @@ jobs:
 
             const bot = "github-actions[bot]";
             const prev = comments.find(c => c.user.login === bot && c.body.includes(header));
-
             if (prev) {
               await github.rest.issues.updateComment({
                 owner: context.repo.owner,
@@ -114,13 +115,12 @@ jobs:
     if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
     needs: test
     runs-on: ubuntu-latest
-
     steps:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
 
-      # Download only Chromium report for publishing
-      - name: 📥 Download Playwright Report
+      # Publish the Chromium report to Pages (you can change to a merged report later)
+      - name: 📥 Download Playwright Report (chromium)
         uses: actions/download-artifact@v4
         with:
           name: playwright-report-chromium
@@ -133,3 +133,43 @@ jobs:
           publish_dir: ./playwright-report
           publish_branch: gh-pages
           force_orphan: true
+
+  build_and_push_image:
+    name: Build & Push GHCR test image
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: ⬇️ Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node (for layer caching)
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: 📦 Install deps (for Docker context)
+        run: npm ci
+
+      - name: 🔐 Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
+
+      - name: 🏷️ Prepare tags
+        id: meta
+        run: |
+          SHA_SHORT="${GITHUB_SHA::7}"
+          echo "latest=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
+          echo "sha=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHA_SHORT}" >> $GITHUB_OUTPUT
+
+      - name: 🛠️ Build image
+        run: |
+          docker build \
+            --build-arg NODE_VERSION=${{ env.NODE_VERSION }} \
+            -t ${{ steps.meta.outputs.latest }} \
+            -t ${{ steps.meta.outputs.sha }} \
+            .
+
+      - name: ⬆️ Push image
+        run: |
+          docker push ${{ steps.meta.outputs.latest }}
+          docker push ${{ steps.meta.outputs.sha }}
