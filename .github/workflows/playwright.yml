@@ -1,96 +1,135 @@
-name: Playwright CI
+name: Playwright Tests (DemoQA)
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
   workflow_dispatch:
   schedule:
-    # Every day at 09:00 IST (03:30 UTC)
-    - cron: "30 3 * * *"
+    - cron: '30 3 * * *' # 9:00 AM IST (03:30 UTC)
 
 permissions:
-  contents: read
-  packages: write    # needed to push to GHCR
-  id-token: write    # optional; useful if you later add OIDC to cloud
-
-env:
-  NODE_VERSION: "20"
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-tests   # ghcr.io/<owner>/<repo>-tests
-
-concurrency:
-  group: playwright-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write     # for gh-pages push
+  pull-requests: write # for PR comment
 
 jobs:
   test:
+    name: Test on ${{ matrix.browser }}
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+
     steps:
-      - name: ⬇️ Checkout
+      - name: ⬇️ Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node
+      - name: 🟢 Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: 20
           cache: npm
 
-      - name: 📦 Install deps
+      - name: 📦 Install dependencies
         run: npm ci
 
-      - name: 🎭 Install Playwright browsers
+      - name: 🎭 Install Playwright Browsers
         run: npx playwright install --with-deps
 
-      - name: 🧪 Run Playwright tests (HTML + line)
-        run: npx playwright test --reporter=html,line
+      - name: 🚀 Run Playwright Tests (${{ matrix.browser }})
+        continue-on-error: true
+        env:
+          DEMOQA_BASE_URL: ${{ secrets.DEMOQA_BASE_URL }}
+          DEMOQA_USERNAME: ${{ secrets.DEMOQA_USERNAME }}
+          DEMOQA_PASSWORD: ${{ secrets.DEMOQA_PASSWORD }}
+        run: npx playwright test --project=${{ matrix.browser }} --reporter=html,line
 
-      - name: 📤 Upload HTML report
+      # Upload report per browser
+      - name: 📤 Upload HTML Report (${{ matrix.browser }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.browser }}
           path: playwright-report
-          retention-days: 7
 
-  build_and_push_image:
-    name: Build & Push GHCR Test Image
-    runs-on: ubuntu-latest
+      # Upload traces/videos per browser
+      - name: 📤 Upload traces (${{ matrix.browser }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.browser }}
+          path: test-results
+
+  pr-comment:
+    name: 💬 Post PR Test Summary
+    if: github.event_name == 'pull_request'
     needs: test
+    runs-on: ubuntu-latest
 
     steps:
-      - name: ⬇️ Checkout
+      - name: 💬 Upsert sticky PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const header = "### ✅ Playwright CI Report (DemoQA)";
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+            const body =
+            `${header}
+
+            ✅ Browsers: **Chromium | Firefox | WebKit**
+
+            📄 Reports are available in workflow artifacts  
+            🔗 [View CI Run & Download Reports](${runUrl})  
+
+            _This comment auto-updates on new runs_`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+
+            const bot = "github-actions[bot]";
+            const prev = comments.find(c => c.user.login === bot && c.body.includes(header));
+
+            if (prev) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: prev.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+  deploy:
+    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
 
-      - name: 🟢 Setup Node (build context may need deps copy)
-        uses: actions/setup-node@v4
+      # Download only Chromium report for publishing
+      - name: 📥 Download Playwright Report
+        uses: actions/download-artifact@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+          name: playwright-report-chromium
+          path: playwright-report
 
-      - name: 📦 Install deps (for COPY in image layer)
-        run: npm ci
-
-      - name: 🔐 Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
-
-      - name: 🏷️ Prepare tags
-        id: meta
-        run: |
-          SHA_SHORT="${GITHUB_SHA::7}"
-          echo "latest=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
-          echo "sha=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHA_SHORT}" >> $GITHUB_OUTPUT
-
-      - name: 🛠️ Build image
-        run: |
-          docker build \
-            --build-arg NODE_VERSION=${{ env.NODE_VERSION }} \
-            -t ${{ steps.meta.outputs.latest }} \
-            -t ${{ steps.meta.outputs.sha }} \
-            .
-
-      - name: ⬆️ Push image
-        run: |
-          docker push ${{ steps.meta.outputs.latest }}
-          docker push ${{ steps.meta.outputs.sha }}
+      - name: 🚀 Deploy Playwright HTML Report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./playwright-report
+          publish_branch: gh-pages
+          force_orphan: true
