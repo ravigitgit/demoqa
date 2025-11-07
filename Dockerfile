@@ -1,20 +1,19 @@
 # syntax=docker/dockerfile:1
 
-# Playwright base image (includes browsers + drivers)
-ARG NODE_VERSION=20
-FROM mcr.microsoft.com/playwright:v${NODE_VERSION}-jammy
+# Playwright base image matching NPM version
+FROM mcr.microsoft.com/playwright:v1.56.1-noble
 
 WORKDIR /app
 
-# Install dependencies first (cache layer)
+# Install dependencies
 COPY package*.json ./
 RUN npm ci
 
-# Copy test suite
+# Copy all tests & config
 COPY . .
 
-# Ensure browsers installed (safe even if base has them)
+# Ensure browsers available (base already has them)
 RUN npx playwright install --with-deps
 
-# Default command runs tests
+# Default command - run tests & generate HTML report
 CMD ["npx", "playwright", "test", "--reporter=html,line"]
