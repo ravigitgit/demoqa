@@ -1,3 +1,5 @@
+![GitHub release](https://img.shields.io/github/v/release/ravigitgit/demoqa)
+
 ## 🛠️ Installation & Setup
 
 1. **Clone the repo**
@@ -30,4 +32,3 @@ PlayWright test reports are automatically generated and deployed via GitHub Acti
 
 
 
-![GitHub release](https://img.shields.io/github/v/release/ravigitgit/demoqa)
