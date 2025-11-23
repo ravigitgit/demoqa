@@ -1,19 +1,25 @@
 # syntax=docker/dockerfile:1
-
-# Playwright base image matching NPM version
 FROM mcr.microsoft.com/playwright:v1.56.1-noble
 
+# create app dir and test results dir
 WORKDIR /app
+RUN mkdir -p /app/test-results
 
-# Install dependencies
+# copy package files first to leverage layer caching
 COPY package*.json ./
+
+# install dependencies (dev deps included so tests can run)
 RUN npm ci
 
-# Copy all tests & config
+# copy source & tests
 COPY . .
 
-# Ensure browsers available (base already has them)
-RUN npx playwright install --with-deps
+# Optional: if you changed Playwright version or added browsers, uncomment:
+# RUN npx playwright install --with-deps
 
-# Default command - run tests & generate HTML report
-CMD ["npx", "playwright", "test", "--reporter=html,line"]
+# Use non-root user if available (safer). Many Playwright base images provide 'pwuser'.
+# If 'pwuser' does not exist in the image, this step will fail; remove it in that case.
+USER pwuser  || true
+
+# Default command — write reports into /app/test-results
+CMD ["npx", "playwright", "test", "--reporter=html,line", "--output=/app/test-results"]
