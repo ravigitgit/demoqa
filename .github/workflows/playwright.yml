@@ -1,165 +1,159 @@
-name: Playwright Tests (DemoQA)
+name: Run DemoQA Playwright in Kubernetes (kind)
 
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: '30 3 * * *'  # 9:00 AM IST
-
-permissions:
-  contents: write
-  pull-requests: write
-  packages: write
-
-env:
-  NODE_VERSION: 20
-  REGISTRY: ghcr.io
-  IMAGE_NAME: demoqa  # 🔥 Your final GHCR image name
 
 jobs:
-  test:
-    name: Test on ${{ matrix.browser }}
+  run-playwright-k8s:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [chromium, firefox, webkit]
-
+    env:
+      IMAGE_NAME: demoqa:latest
+      JOB_NAME: demoqa-playwright-tests
+      NAMESPACE: default
     steps:
-      - name: ⬇️ Checkout repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: 🟢 Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up QEMU (optional, multi-arch)
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v3
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
+          version: 'latest'
 
-      - name: 📦 Install dependencies
-        run: npm ci
-
-      - name: 🎭 Install Playwright Browsers
-        run: npx playwright install --with-deps
-
-      - name: 🚀 Run Playwright Tests (${{ matrix.browser }})
-        continue-on-error: true
-        env:
-          DEMOQA_BASE_URL: ${{ secrets.DEMOQA_BASE_URL }}
-          DEMOQA_USERNAME: ${{ secrets.DEMOQA_USERNAME }}
-          DEMOQA_PASSWORD: ${{ secrets.DEMOQA_PASSWORD }}
-        run: npx playwright test --project=${{ matrix.browser }} --reporter=html,line
-
-      - name: 📤 Upload HTML Report (${{ matrix.browser }})
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
         with:
-          name: playwright-report-${{ matrix.browser }}
-          path: playwright-report
+          cluster_name: demoqa-kind
+          wait: 60s
 
-      - name: 📤 Upload traces (${{ matrix.browser }})
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ matrix.browser }}
-          path: test-results
-
-  pr-comment:
-    name: 💬 Post PR Test Summary
-    if: github.event_name == 'pull_request'
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: 💬 Upsert sticky PR comment
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const header = "### ✅ Playwright CI Report (DemoQA)";
-            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const body =
-            `${header}
-
-            ✅ Browsers: **Chromium | Firefox | WebKit**
-
-            📄 Reports are available in workflow artifacts  
-            🔗 [View CI Run & Download Reports](${runUrl})
-
-            _This comment auto-updates on new runs_`;
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number
-            });
-
-            const bot = "github-actions[bot]";
-            const prev = comments.find(c => c.user.login === bot && c.body.includes(header));
-            if (prev) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: prev.id,
-                body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body
-              });
-            }
-
-  deploy:
-    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v4
-
-      - name: 📥 Download Playwright Report (chromium)
-        uses: actions/download-artifact@v4
-        with:
-          name: playwright-report-chromium
-          path: playwright-report
-
-      - name: 🚀 Deploy Playwright HTML Report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./playwright-report
-          publish_branch: gh-pages
-          force_orphan: true
-
-  build_and_push_image:
-    name: Build & Push GHCR (demoqa image)
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - name: ⬇️ Checkout
-        uses: actions/checkout@v4
-
-      - name: 🔐 Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 🏷️ Prepare tags
-        id: meta
+      - name: Build Docker image
         run: |
-          SHA_SHORT="${GITHUB_SHA::7}"
-          echo "latest=${{ env.REGISTRY }}/ravigitgit/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
-          echo "sha=${{ env.REGISTRY }}/ravigitgit/${{ env.IMAGE_NAME }}:${SHA_SHORT}" >> $GITHUB_OUTPUT
+          docker build -t $IMAGE_NAME .
 
-      - name: 🛠️ Build and push image
-        uses: docker/build-push-action@v5
+      - name: Load image into kind
+        run: |
+          kind load docker-image $IMAGE_NAME --name demoqa-kind
+
+      - name: Ensure kubectl uses kind context
+        run: |
+          kubectl cluster-info
+          kubectl config current-context
+
+      - name: Create namespace (optional)
+        run: |
+          kubectl create namespace $NAMESPACE --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create Kubernetes secret from .env or GitHub Secrets
+        id: create-secret
+        run: |
+          if [ -f .env ]; then
+            echo ".env found — creating secret from it"
+            kubectl delete secret demoqa-secret --ignore-not-found
+            kubectl create secret generic demoqa-secret --from-env-file=.env
+          else
+            echo ".env not found — creating secret from GitHub Actions secrets"
+            kubectl delete secret demoqa-secret --ignore-not-found
+            kubectl create secret generic demoqa-secret \
+              --from-literal=DEMOQA_BASE_URL="${{ secrets.DEMOQA_BASE_URL }}" \
+              --from-literal=DEMOQA_USERNAME="${{ secrets.DEMOQA_USERNAME }}" \
+              --from-literal=DEMOQA_PASSWORD="${{ secrets.DEMOQA_PASSWORD }}"
+          fi
+
+      - name: Create PVC for reports (optional)
+        run: |
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: playwright-reports-pvc
+          spec:
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+          EOF
+
+      - name: Create Kubernetes Job to run Playwright tests
+        run: |
+          cat <<'EOF' | kubectl apply -f -
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: ${JOB_NAME}
+          spec:
+            backoffLimit: 0
+            template:
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: demoqa-tests
+                    image: ${IMAGE_NAME}
+                    imagePullPolicy: IfNotPresent
+                    env:
+                      - name: DEMOQA_BASE_URL
+                        valueFrom:
+                          secretKeyRef:
+                            name: demoqa-secret
+                            key: DEMOQA_BASE_URL
+                      - name: DEMOQA_USERNAME
+                        valueFrom:
+                          secretKeyRef:
+                            name: demoqa-secret
+                            key: DEMOQA_USERNAME
+                      - name: DEMOQA_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: demoqa-secret
+                            key: DEMOQA_PASSWORD
+                    volumeMounts:
+                      - name: artifacts
+                        mountPath: /app/test-results
+                    command: ["npx"]
+                    args: ["playwright", "test", "--reporter=html,line", "--output=/app/test-results"]
+                volumes:
+                  - name: artifacts
+                    persistentVolumeClaim:
+                      claimName: playwright-reports-pvc
+          EOF
+
+      - name: Wait for Job to complete (timeout 10m)
+        run: |
+          kubectl wait --for=condition=complete --timeout=600s job/${JOB_NAME}
+
+      - name: Get pod name
+        id: pod
+        run: |
+          POD=$(kubectl get pods -l job-name=${JOB_NAME} -o jsonpath='{.items[0].metadata.name}')
+          echo "pod=$POD" >> $GITHUB_OUTPUT
+
+      - name: Dump pod logs
+        run: |
+          echo "Pod is ${{ steps.pod.outputs.pod }}"
+          kubectl logs ${{ steps.pod.outputs.pod }} -c demoqa-tests --tail=1000 > test-pod.log || true
+          cat test-pod.log
+
+      - name: Copy test-results from pod
+        run: |
+          mkdir -p ./k8s-results
+          kubectl cp ${NAMESPACE}/${{ steps.pod.outputs.pod }}:/app/test-results ./k8s-results -c demoqa-tests || echo "no test-results folder or copy failed"
+
+      - name: Upload logs & results
+        uses: actions/upload-artifact@v4
         with:
-          context: .
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.latest }}
-            ${{ steps.meta.outputs.sha }}
+          name: playwright-k8s-results
+          path: |
+            test-pod.log
+            k8s-results
+
+      - name: "Cleanup: delete job and pvc"
+        if: always()
+        run: |
+          kubectl delete job ${JOB_NAME} --ignore-not-found
+          kubectl delete pvc playwright-reports-pvc --ignore-not-found
+          kind delete cluster --name demoqa-kind || true
