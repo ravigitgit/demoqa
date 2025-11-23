@@ -55,12 +55,12 @@ Reports are auto‑published on CI ✅
 
 ### Pull Playwright Test Runner
 ```bash
-docker pull ghcr.io/ravigitgit/demoqa-tests:latest
+docker pull ghcr.io/ravigitgit/demoqa:latest
 ```
 
 ### Execute Tests Inside Container
 ```bash
-docker run --rm ghcr.io/ravigitgit/demoqa-tests:latest
+docker run --rm ghcr.io/ravigitgit/demoqa:latest
 ```
 
 > Ensures consistent test environment across machines & CI 🌍
@@ -95,7 +95,7 @@ demoqa/
 |--------|------|
 DemoQA Site | https://demoqa.com |
 GitHub Pages Report | https://ravigitgit.github.io/demoqa |
-Docker Image | `ghcr.io/ravigitgit/demoqa-tests:latest` |
+Docker Image | `ghcr.io/ravigitgit/demoqa:latest` |
 Releases | https://github.com/ravigitgit/demoqa/releases |
 
 ---
