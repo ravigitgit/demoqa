@@ -81,14 +81,19 @@ jobs:
 
       - name: Create Kubernetes Job to run Playwright tests
         run: |
-          cat <<'EOF' | kubectl apply -f -
+          cat <<EOF | kubectl apply -f -
           apiVersion: batch/v1
           kind: Job
           metadata:
             name: ${JOB_NAME}
+            labels:
+              job-name: ${JOB_NAME}
           spec:
             backoffLimit: 0
             template:
+              metadata:
+                labels:
+                  job-name: ${JOB_NAME}
               spec:
                 restartPolicy: Never
                 containers:
