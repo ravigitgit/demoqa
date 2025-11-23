@@ -53,12 +53,12 @@ jobs:
         run: |
           if [ -f .env ]; then
             echo ".env found — creating secret from it"
-            kubectl delete secret demoqa-secret --ignore-not-found
-            kubectl create secret generic demoqa-secret --from-env-file=.env
+            kubectl delete secret demoqa-secret -n $NAMESPACE --ignore-not-found
+            kubectl create secret generic demoqa-secret -n $NAMESPACE --from-env-file=.env
           else
             echo ".env not found — creating secret from GitHub Actions secrets"
-            kubectl delete secret demoqa-secret --ignore-not-found
-            kubectl create secret generic demoqa-secret \
+            kubectl delete secret demoqa-secret -n $NAMESPACE --ignore-not-found
+            kubectl create secret generic demoqa-secret -n $NAMESPACE \
               --from-literal=DEMOQA_BASE_URL="${{ secrets.DEMOQA_BASE_URL }}" \
               --from-literal=DEMOQA_USERNAME="${{ secrets.DEMOQA_USERNAME }}" \
               --from-literal=DEMOQA_PASSWORD="${{ secrets.DEMOQA_PASSWORD }}"
@@ -66,7 +66,7 @@ jobs:
 
       - name: Create PVC for reports (optional)
         run: |
-          cat <<'EOF' | kubectl apply -f -
+          cat <<'EOF' | kubectl apply -n $NAMESPACE -f -
           apiVersion: v1
           kind: PersistentVolumeClaim
           metadata:
@@ -86,67 +86,79 @@ jobs:
           kind: Job
           metadata:
             name: ${{ env.JOB_NAME }}
-          labels:
-            job-name: ${{ env.JOB_NAME }}
+            labels:
+              job-name: ${{ env.JOB_NAME }}
           spec:
             backoffLimit: 0
-          template:
-          metadata:
-          labels:
-            job-name: ${{ env.JOB_NAME }}
-          spec:
-          restartPolicy: Never
-          containers:
-            - name: demoqa-tests
-              image: ${{ env.IMAGE_NAME }}
-              imagePullPolicy: IfNotPresent
-              env:
-                - name: DEMOQA_BASE_URL
-                  valueFrom:
-                    secretKeyRef:
-                      name: demoqa-secret
-                      key: DEMOQA_BASE_URL
-                - name: DEMOQA_USERNAME
-                  valueFrom:
-                    secretKeyRef:
-                      name: demoqa-secret
-                      key: DEMOQA_USERNAME
-                - name: DEMOQA_PASSWORD
-                  valueFrom:
-                    secretKeyRef:
-                      name: demoqa-secret
-                      key: DEMOQA_PASSWORD
-              volumeMounts:
-                - name: artifacts
-                  mountPath: /app/test-results
-              command: ["npx"]
-              args: ["playwright", "test", "--reporter=html,line", "--output=/app/test-results", "--workers=1"]
-          volumes:
-            - name: artifacts
-              persistentVolumeClaim:
-                claimName: playwright-reports-pvc
+            template:
+              metadata:
+                labels:
+                  job-name: ${{ env.JOB_NAME }}
+              spec:
+                restartPolicy: Never
+                containers:
+                  - name: demoqa-tests
+                    image: ${{ env.IMAGE_NAME }}
+                    imagePullPolicy: IfNotPresent
+                    env:
+                      - name: DEMOQA_BASE_URL
+                        valueFrom:
+                          secretKeyRef:
+                            name: demoqa-secret
+                            key: DEMOQA_BASE_URL
+                      - name: DEMOQA_USERNAME
+                        valueFrom:
+                          secretKeyRef:
+                            name: demoqa-secret
+                            key: DEMOQA_USERNAME
+                      - name: DEMOQA_PASSWORD
+                        valueFrom:
+                          secretKeyRef:
+                            name: demoqa-secret
+                            key: DEMOQA_PASSWORD
+                    volumeMounts:
+                      - name: artifacts
+                        mountPath: /app/test-results
+                    command: ["npx"]
+                    args: ["playwright", "test", "--reporter=html,line", "--output=/app/test-results", "--workers=1"]
+                volumes:
+                  - name: artifacts
+                    persistentVolumeClaim:
+                      claimName: playwright-reports-pvc
           EOF
 
-      - name: Wait for Job to complete (timeout 10m)
+      - name: Wait for Job to complete (timeout 15m)
         run: |
-          kubectl wait --for=condition=complete --timeout=600s job/${JOB_NAME}
+          kubectl wait --for=condition=complete --timeout=900s -n $NAMESPACE job/${{ env.JOB_NAME }}
 
-      - name: Get pod name
+      - name: Get pod name (retry until available)
         id: pod
         run: |
-          POD=$(kubectl get pods -l job-name=${JOB_NAME} -o jsonpath='{.items[0].metadata.name}')
-          echo "pod=$POD" >> $GITHUB_OUTPUT
+          set -e
+          POD=""
+          for i in $(seq 1 20); do
+            POD=$(kubectl get pods -n $NAMESPACE -l job-name=${{ env.JOB_NAME }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+            if [ -n "$POD" ]; then
+              echo "Found pod: $POD"
+              echo "pod=$POD" >> $GITHUB_OUTPUT
+              exit 0
+            fi
+            echo "Pod not yet present, retrying ($i)..."
+            sleep 3
+          done
+          echo "Failed to find pod for job ${{ env.JOB_NAME }}"
+          exit 1
 
       - name: Dump pod logs
         run: |
           echo "Pod is ${{ steps.pod.outputs.pod }}"
-          kubectl logs ${{ steps.pod.outputs.pod }} -c demoqa-tests --tail=1000 > test-pod.log || true
-          cat test-pod.log
+          kubectl logs -n $NAMESPACE ${{ steps.pod.outputs.pod }} -c demoqa-tests --tail=1000 > test-pod.log || true
+          cat test-pod.log || true
 
       - name: Copy test-results from pod
         run: |
           mkdir -p ./k8s-results
-          kubectl cp ${NAMESPACE}/${{ steps.pod.outputs.pod }}:/app/test-results ./k8s-results -c demoqa-tests || echo "no test-results folder or copy failed"
+          kubectl cp $NAMESPACE/${{ steps.pod.outputs.pod }}:/app/test-results ./k8s-results -c demoqa-tests || echo "no test-results folder or copy failed"
 
       - name: Upload logs & results
         uses: actions/upload-artifact@v4
@@ -159,6 +171,6 @@ jobs:
       - name: "Cleanup: delete job and pvc"
         if: always()
         run: |
-          kubectl delete job ${JOB_NAME} --ignore-not-found
-          kubectl delete pvc playwright-reports-pvc --ignore-not-found
+          kubectl delete job ${{ env.JOB_NAME }} -n $NAMESPACE --ignore-not-found
+          kubectl delete pvc playwright-reports-pvc -n $NAMESPACE --ignore-not-found
           kind delete cluster --name demoqa-kind || true
