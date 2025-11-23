@@ -98,7 +98,7 @@ jobs:
               spec:
                 restartPolicy: Never
                 containers:
-                  - name: demoqa-tests
+                  - name: demoqa
                     image: ${{ env.IMAGE_NAME }}
                     imagePullPolicy: IfNotPresent
                     env:
@@ -161,13 +161,13 @@ jobs:
       - name: Dump pod logs
         run: |
           echo "Pod is ${{ steps.pod.outputs.pod }}"
-          kubectl logs -n $NAMESPACE ${{ steps.pod.outputs.pod }} -c demoqa-tests --tail=1000 > test-pod.log || true
+          kubectl logs -n $NAMESPACE ${{ steps.pod.outputs.pod }} -c demoqa --tail=1000 > test-pod.log || true
           cat test-pod.log || true
 
       - name: Copy test-results from pod
         run: |
           mkdir -p ./k8s-results
-          kubectl cp $NAMESPACE/${{ steps.pod.outputs.pod }}:/app/test-results ./k8s-results -c demoqa-tests || echo "no test-results folder or copy failed"
+          kubectl cp $NAMESPACE/${{ steps.pod.outputs.pod }}:/app/test-results ./k8s-results -c demoqa || echo "no test-results folder or copy failed"
 
       - name: Upload logs & results
         uses: actions/upload-artifact@v4
