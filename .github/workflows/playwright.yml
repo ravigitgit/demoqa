@@ -82,7 +82,7 @@ jobs:
 
       - name: Create Kubernetes Job to run Playwright tests
         run: |
-          cat <<EOF | kubectl apply -n $NAMESPACE -f -
+          cat > /tmp/demoqa-job.yaml <<'YAML'
           apiVersion: batch/v1
           kind: Job
           metadata:
@@ -117,7 +117,6 @@ jobs:
                           secretKeyRef:
                             name: demoqa-secret
                             key: DEMOQA_PASSWORD
-                    # Optional resource requests/limits — tune if browsers need more memory/CPU
                     resources:
                       requests:
                         cpu: "500m"
@@ -134,7 +133,13 @@ jobs:
                   - name: artifacts
                     persistentVolumeClaim:
                       claimName: playwright-reports-pvc
-          EOF
+          YAML
+
+          echo "------- rendered job manifest -------"
+          sed -n '1,260p' /tmp/demoqa-job.yaml
+          echo "--------------------------------------"
+
+          kubectl apply -n $NAMESPACE -f /tmp/demoqa-job.yaml
 
       - name: Wait for Job to complete (timeout 15m)
         run: |
