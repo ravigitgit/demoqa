@@ -10,6 +10,7 @@ jobs:
       IMAGE_NAME: demoqa:latest
       JOB_NAME: demoqa-playwright-tests
       NAMESPACE: default
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -116,6 +117,14 @@ jobs:
                           secretKeyRef:
                             name: demoqa-secret
                             key: DEMOQA_PASSWORD
+                    # Optional resource requests/limits — tune if browsers need more memory/CPU
+                    resources:
+                      requests:
+                        cpu: "500m"
+                        memory: "1Gi"
+                      limits:
+                        cpu: "2000m"
+                        memory: "3Gi"
                     volumeMounts:
                       - name: artifacts
                         mountPath: /app/test-results
@@ -136,7 +145,7 @@ jobs:
         run: |
           set -e
           POD=""
-          for i in $(seq 1 20); do
+          for i in $(seq 1 40); do
             POD=$(kubectl get pods -n $NAMESPACE -l job-name=${{ env.JOB_NAME }} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
             if [ -n "$POD" ]; then
               echo "Found pod: $POD"
