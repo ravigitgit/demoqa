@@ -24,7 +24,7 @@ export class CheckBoxPage {
 
     async selectCheckboxes(checkboxIds = []) {
         for (const id of checkboxIds) {
-            await this.page.locator(`label[for="tree-node-${id}"]`).click();
+            await this.page.locator(`div[role="treeitem"]:has-text("${id}") span[role="checkbox"]`).click();
         }
     }
 

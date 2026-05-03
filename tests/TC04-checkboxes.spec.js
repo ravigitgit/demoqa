@@ -8,7 +8,7 @@ test('Checkbox Tree - Expand, Select, and Validate Output', async ({ page }) => 
 
   await checkBoxPage.expandAllNodes();
 
-  await checkBoxPage.selectCheckboxes(['notes', 'react', 'commands']);
+  await checkBoxPage.selectCheckboxes(['Desktop', 'Documents', 'Downloads']);
 
-  await checkBoxPage.validateSelectedOutput(['notes', 'react', 'commands']);
+  await checkBoxPage.validateSelectedOutput(['Desktop', 'Documents', 'Downloads']);
 });
