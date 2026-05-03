@@ -9,14 +9,11 @@ on:
     - cron: '30 3 * * *' # 9:00 AM IST (03:30 UTC)
 
 permissions:
-  contents: write         # gh-pages push
-  pull-requests: write    # PR comment
-  packages: write         # 🔑 needed for GHCR push
+  contents: write
+  pull-requests: write
 
 env:
   NODE_VERSION: 20
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ravigitgit/demoqa  # final: ghcr.io/ravigitgit/demoqa
 
 jobs:
   test:
@@ -119,7 +116,6 @@ jobs:
       - name: ⬇️ Checkout repo
         uses: actions/checkout@v4
 
-      # Publish the Chromium report to Pages (you can change to a merged report later)
       - name: 📥 Download Playwright Report (chromium)
         uses: actions/download-artifact@v4
         with:
@@ -133,43 +129,3 @@ jobs:
           publish_dir: ./playwright-report
           publish_branch: gh-pages
           force_orphan: true
-
-  build_and_push_image:
-    name: Build & Push GHCR test image
-    runs-on: ubuntu-latest
-    needs: test
-    steps:
-      - name: ⬇️ Checkout
-        uses: actions/checkout@v4
-
-      - name: 🟢 Setup Node (for layer caching)
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: 📦 Install deps (for Docker context)
-        run: npm ci
-
-      - name: 🔐 Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ${{ env.REGISTRY }} -u ${{ github.actor }} --password-stdin
-
-      - name: 🏷️ Prepare tags
-        id: meta
-        run: |
-          SHA_SHORT="${GITHUB_SHA::7}"
-          echo "latest=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest" >> $GITHUB_OUTPUT
-          echo "sha=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${SHA_SHORT}" >> $GITHUB_OUTPUT
-
-      - name: 🛠️ Build image
-        run: |
-          docker build \
-            --build-arg NODE_VERSION=${{ env.NODE_VERSION }} \
-            -t ${{ steps.meta.outputs.latest }} \
-            -t ${{ steps.meta.outputs.sha }} \
-            .
-
-      - name: ⬆️ Push image
-        run: |
-          docker push ${{ steps.meta.outputs.latest }}
-          docker push ${{ steps.meta.outputs.sha }}
