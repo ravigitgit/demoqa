@@ -20,7 +20,7 @@ export class Locators {
         this.passwordInput = this.page.getByPlaceholder('Password');
         this.loginButton = this.page.getByRole('button', { name: 'Login' });
         this.errorMessage = this.page.locator('#name');
-        this.logoutText = this.page.getByText('Log out');
+        this.logoutText = this.page.locator(`#submit:has-text('Logout')`);
         this.usernameDisplay = this.page.locator('#userName-value');
     }
 
@@ -43,7 +43,7 @@ export class Locators {
         this.departmentInput = this.page.getByPlaceholder('Department');
 
         // Table
-        this.table = this.page.locator('.rt-table');
+        this.table = this.page.locator('table');
 
         // Actions
         this.editButton = this.page.locator('span[title="Edit"]').last();
@@ -84,7 +84,7 @@ export class Locators {
         this.checkBoxLink = this.page.getByText('Check Box', { exact: true });
 
         // Functional
-        this.expandAllBtn = this.page.locator('button[title="Expand all"]');
+        this.expandAllBtn = this.page.locator('.rc-tree-switcher');
         this.output = this.page.locator('#result');
     }
 

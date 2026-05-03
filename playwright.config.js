@@ -14,9 +14,12 @@ dotenv.config();
 /**
  * @see https://playwright.dev/docs/test-configuration
  */
+
 export default defineConfig({
   // Allure Playwright
   reporter: [['list'], ['html', { open: 'never' }]],
+
+  globalSetup: './global-setup.js',
 
   testDir: './tests',
   /* Run tests in files in parallel */
@@ -29,9 +32,9 @@ export default defineConfig({
   workers: 1,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
-  timeout: 100 * 1000,
+  timeout: 80 * 1000,
   expect: {
-    timeout: 100 * 1000
+    timeout: 80 * 1000
   },
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
@@ -41,16 +44,15 @@ export default defineConfig({
     trace: 'on',
     headless: true,
     screenshot: 'only-on-failure',
-    // video: 'retain-on-failure'
-    video: 'off'
+    video: 'retain-on-failure',
   },
 
   /* Configure projects for major browsers */
 
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
-    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
-    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    // { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    // { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
 
   outputDir: 'test-results',                       // uploaded as artifact
