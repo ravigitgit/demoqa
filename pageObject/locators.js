@@ -55,6 +55,7 @@ export class Locators {
         this.formsCard = this.page.getByText('Forms', { exact: true });
         this.practiceFormLink = this.page.getByText('Practice Form', { exact: true });
         this.formTitle = this.page.getByText('Student Registration Form');
+        this.alertsTitle = this.page.locator('h1:has-text("Alerts")');
 
         this.firstNameInput = this.page.getByPlaceholder('First Name');
         this.lastNameInput = this.page.getByPlaceholder('Last Name');
