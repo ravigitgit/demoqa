@@ -63,7 +63,7 @@ jobs:
           retention-days: 30
 
   deploy:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (success() || failure())
     needs: test
     runs-on: ubuntu-24.04
 
