@@ -1,0 +1,4 @@
+Dialog type: prompt
+Message: Please enter your name
+Dialog type: prompt
+Message: Please enter your name

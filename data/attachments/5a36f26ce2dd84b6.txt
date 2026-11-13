@@ -1,0 +1,2 @@
+Dialog detected
+Message: You clicked a button
