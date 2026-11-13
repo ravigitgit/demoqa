@@ -1,131 +1,72 @@
-name: Playwright Tests (DemoQA)
+
+name: Playwright Tests
 
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: '30 3 * * *' # 9:00 AM IST (03:30 UTC)
 
 permissions:
-  contents: write
-  pull-requests: write
-
-env:
-  NODE_VERSION: 20
+  contents: read
 
 jobs:
   test:
-    name: Test on ${{ matrix.browser }}
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [chromium, firefox, webkit]
+    runs-on: ubuntu-24.04
 
     steps:
-      - name: ⬇️ Checkout repository
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
-      - name: 🟢 Set up Node.js
-        uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: 24
           cache: npm
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: 🎭 Install Playwright Browsers
+      - name: Install Playwright Browsers
         run: npx playwright install --with-deps
 
-      - name: 🚀 Run Playwright Tests (${{ matrix.browser }})
+      - name: Run Playwright Tests
+        run: npx playwright test
+
+      - name: Generate Allure Report
+        if: always()
+        run: npm run allure:report
         continue-on-error: true
-        env:
-          DEMOQA_BASE_URL: ${{ secrets.DEMOQA_BASE_URL }}
-          DEMOQA_USERNAME: ${{ secrets.DEMOQA_USERNAME }}
-          DEMOQA_PASSWORD: ${{ secrets.DEMOQA_PASSWORD }}
-        run: npx playwright test --project=${{ matrix.browser }} --reporter=html,line
 
-      - name: 📤 Upload HTML Report (${{ matrix.browser }})
+      - name: Upload Allure Report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-${{ matrix.browser }}
-          path: playwright-report
-
-      - name: 📤 Upload traces (${{ matrix.browser }})
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ matrix.browser }}
-          path: test-results
-
-  pr-comment:
-    name: 💬 Post PR Test Summary
-    if: github.event_name == 'pull_request'
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - name: 💬 Upsert sticky PR comment
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const header = "### ✅ Playwright CI Report (DemoQA)";
-            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
-            const body =
-            `${header}
-
-            ✅ Browsers: **Chromium | Firefox | WebKit**
-
-            📄 Reports are available in workflow artifacts  
-            🔗 [View CI Run & Download Reports](${runUrl})
-
-            _This comment auto-updates on new runs_`;
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number
-            });
-
-            const bot = "github-actions[bot]";
-            const prev = comments.find(c => c.user.login === bot && c.body.includes(header));
-            if (prev) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: prev.id,
-                body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body
-              });
-            }
+          name: allure-report
+          path: allure-report/
+          if-no-files-found: ignore
+          retention-days: 30
 
   deploy:
-    if: github.ref == 'refs/heads/main' || github.event_name == 'schedule'
+    if: github.ref == 'refs/heads/main'
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: write
+
     steps:
-      - name: ⬇️ Checkout repo
-        uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v7
 
-      - name: 📥 Download Playwright Report (chromium)
-        uses: actions/download-artifact@v4
+      - name: Download Allure Report
+        uses: actions/download-artifact@v8
         with:
-          name: playwright-report-chromium
-          path: playwright-report
+          name: allure-report
+          path: allure-report/
 
-      - name: 🚀 Deploy Playwright HTML Report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./playwright-report
-          publish_branch: gh-pages
-          force_orphan: true
+          publish_dir: ./allure-report
