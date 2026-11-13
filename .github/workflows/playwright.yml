@@ -31,12 +31,27 @@ jobs:
         run: npx playwright install --with-deps
 
       - name: Run Playwright Tests
+        env:
+          DEMOQA_BASE_URL: https://demoqa.com
+          DEMOQA_USERNAME: ${{ secrets.DEMOQA_USERNAME }}
+          DEMOQA_PASSWORD: ${{ secrets.DEMOQA_PASSWORD }}
         run: npx playwright test
+
+      - name: Set up Java for Allure
+        if: always()
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
 
       - name: Generate Allure Report
         if: always()
-        run: npm run allure:report
-        continue-on-error: true
+        run: |
+          if [ -d allure-results ] && [ -n "$(ls -A allure-results)" ]; then
+            npm run allure:report
+          else
+            echo "No Allure results found; skipping report generation."
+          fi
 
       - name: Upload Allure Report
         if: always()

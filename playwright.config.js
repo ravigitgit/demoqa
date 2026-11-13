@@ -17,7 +17,11 @@ dotenv.config();
 
 export default defineConfig({
   // Allure Playwright
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    ['allure-playwright'],
+  ],
 
   globalSetup: './global-setup.js',
 
@@ -38,7 +42,7 @@ export default defineConfig({
   },
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: process.env.DEMOQA_BASE_URL,
+    baseURL: process.env.DEMOQA_BASE_URL || 'https://demoqa.com',
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on',
