@@ -1,0 +1,4 @@
+Dialog detected
+Message: Do you confirm action?
+Dialog detected
+Message: Do you confirm action?
